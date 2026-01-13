@@ -1,55 +1,75 @@
-
 # ============================================
-# DEPENDÊNCIAS DO SISTEMA SUPER FOOD
+# SUPER FOOD - Dependências do Sistema
+# Versão: 2.0 (SQLAlchemy Multi-Tenant)
 # ============================================
 
-# Backend API - FastAPI + Uvicorn
+# ==================== CORE ====================
+
+# Banco de Dados - SQLAlchemy ORM
+sqlalchemy>=2.0.25
+
+# Migrations (para produção)
+alembic>=1.13.1
+
+# Variáveis de Ambiente
+python-dotenv>=1.0.1
+
+# ==================== FRONTEND ====================
+
+# Streamlit - Interface Web
+streamlit>=1.40.2
+
+# Data manipulation
+pandas>=2.2.3
+
+# Mapas interativos
+pydeck>=0.9.1
+
+# Gráficos
+plotly>=5.24.1
+
+# ==================== BACKEND API (OPCIONAL) ====================
+
+# FastAPI + Uvicorn
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-
-# Banco de Dados - SQLAlchemy
-sqlalchemy>=2.0.36
 
 # Autenticação JWT
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 
-# Variáveis de Ambiente
-python-dotenv>=1.0.1
-
-# Validação de Dados
+# Validação
 pydantic[email]>=2.10.3
 
-# Upload de Arquivos (OAuth2PasswordRequestForm)
+# Upload de arquivos
 python-multipart>=0.0.20
 
-# HTTP Client para Mapbox e APIs externas
+# WebSockets (realtime)
+websockets>=14.1
+
+# ==================== INTEGRAÇÕES ====================
+
+# HTTP Client (Mapbox, APIs externas)
 requests>=2.32.3
 
 # Cálculo de Distâncias
 haversine>=2.8.1
 
-# Frontend - Streamlit
-streamlit>=1.40.2
-pandas>=2.2.3
+# ==================== PRODUÇÃO ====================
 
-# Mapas no Streamlit
-pydeck>=0.9.1
+# PostgreSQL Driver (quando migrar para nuvem)
+psycopg2-binary>=2.9.9
 
-# Gráficos (opcional)
-plotly>=5.24.1
+# ==================== DESENVOLVIMENTO (OPCIONAL) ====================
 
-# WebSockets (para realtime)
-websockets>=14.1
-
-# ============================================
-# DESENVOLVIMENTO (opcional)
-# ============================================
 # pytest>=8.3.4
 # black>=24.10.0
 # flake8>=7.1.1
+# mypy>=1.7.0
 
-streamlit
-pandas
-sqlite3  # Já vem no Python
-hashlib  # Já vem com Python
+# ============================================
+# NOTAS:
+# - Biblioteca sqlite3 já vem no Python
+# - Biblioteca hashlib já vem no Python
+# - Para produção, descomente psycopg2-binary
+# ============================================
