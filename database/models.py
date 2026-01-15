@@ -80,6 +80,7 @@ class Restaurante(Base):
     produtos = relationship("Produto", back_populates="restaurante", cascade="all, delete-orphan")
     caixas = relationship("Caixa", back_populates="restaurante", cascade="all, delete-orphan")
     notificacoes = relationship("Notificacao", back_populates="restaurante", cascade="all, delete-orphan")
+    solicitacoes_motoboy = relationship("MotoboySolicitacao", back_populates="restaurante", cascade="all, delete-orphan")
     
     # Índices compostos para performance
     __table_args__ = (
@@ -192,6 +193,37 @@ class Motoboy(Base):
             return False
         senha_hash = hashlib.sha256(senha.encode()).hexdigest()
         return self.senha == senha_hash
+
+
+# ==================== SOLICITAÇÕES DE MOTOBOY ====================
+
+class MotoboySolicitacao(Base):
+    """
+    Solicitações de cadastro de motoboys (pendentes de aprovação)
+    Usada pelo PWA/app motoboy antes da aprovação pelo restaurante
+    """
+    __tablename__ = "motoboys_solicitacoes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id", ondelete="CASCADE"), nullable=False)
+    
+    nome = Column(String(100), nullable=False)
+    usuario = Column(String(50), nullable=False)
+    telefone = Column(String(20), nullable=False)
+    codigo_acesso = Column(String(20), nullable=False)  # Código do restaurante informado pelo motoboy
+    
+    data_solicitacao = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(20), default='pendente', nullable=False)  # pendente, aprovado, recusado
+    
+    # Relacionamento
+    restaurante = relationship("Restaurante", back_populates="solicitacoes_motoboy")
+    
+    # Índices multi-tenant e buscas rápidas
+    __table_args__ = (
+        Index('idx_solicitacao_restaurante_status', 'restaurante_id', 'status'),
+        Index('idx_solicitacao_usuario', 'restaurante_id', 'usuario'),
+        Index('idx_solicitacao_codigo', 'restaurante_id', 'codigo_acesso'),
+    )
 
 
 # ==================== PRODUTOS ====================

@@ -37,3 +37,4 @@ firebase_admin_key.json
 venv/
 *.pyc
 __pycache__/
+super_food.db

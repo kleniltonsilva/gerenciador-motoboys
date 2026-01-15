@@ -235,118 +235,6 @@ def atualizar_status_pedido(pedido_id: int, novo_status: str):
         st.error(f"Erro ao atualizar status: {str(e)}")
         return False
 
-def listar_motoboys(restaurante_id: int):
-    """Lista motoboys ativos do restaurante"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM motoboys
-            WHERE restaurante_id = ? AND status != 'recusado'
-            ORDER BY nome
-        """, (restaurante_id,))
-        
-        motoboys = cursor.fetchall()
-        conn.close()
-        
-        return [dict(m) for m in motoboys]
-        
-    except Exception as e:
-        st.error(f"Erro ao listar motoboys: {str(e)}")
-        return []
-
-def listar_solicitacoes_pendentes(restaurante_id: int):
-    """Lista solicitações pendentes de motoboys"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM motoboys
-            WHERE restaurante_id = ? AND status = 'pendente'
-            ORDER BY data_cadastro DESC
-        """, (restaurante_id,))
-        
-        solicitacoes = cursor.fetchall()
-        conn.close()
-        
-        return [dict(s) for s in solicitacoes]
-        
-    except Exception as e:
-        st.error(f"Erro ao listar solicitações: {str(e)}")
-        return []
-
-def aprovar_motoboy(motoboy_id: int):
-    """Aprova cadastro de motoboy"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Gera senha padrão (123456)
-        senha_padrao = hash_senha('123456')
-        
-        cursor.execute("""
-            UPDATE motoboys
-            SET status = 'ativo', senha = ?
-            WHERE id = ?
-        """, (senha_padrao, motoboy_id))
-        
-        conn.commit()
-        conn.close()
-        
-        return True, "Motoboy aprovado com sucesso! Senha padrão: 123456"
-        
-    except Exception as e:
-        return False, f"Erro ao aprovar: {str(e)}"
-
-def recusar_motoboy(motoboy_id: int, motivo: str):
-    """Recusa cadastro de motoboy"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE motoboys
-            SET status = 'recusado'
-            WHERE id = ?
-        """, (motoboy_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        return True, "Solicitação recusada."
-        
-    except Exception as e:
-        return False, f"Erro ao recusar: {str(e)}"
-
-def excluir_motoboy(motoboy_id: int):
-    """Exclui motoboy"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Verificar se tem entregas pendentes
-        cursor.execute("""
-            SELECT COUNT(*) as total FROM entregas
-            WHERE motoboy_id = ? AND status != 'entregue'
-        """, (motoboy_id,))
-        
-        resultado = cursor.fetchone()
-        
-        if resultado and resultado['total'] > 0:
-            conn.close()
-            return False, "Não é possível excluir motoboy com entregas pendentes!"
-        
-        cursor.execute("DELETE FROM motoboys WHERE id = ?", (motoboy_id,))
-        conn.commit()
-        conn.close()
-        
-        return True, "Motoboy excluído com sucesso!"
-        
-    except Exception as e:
-        return False, f"Erro ao excluir: {str(e)}"
-
 def buscar_caixa_aberto(restaurante_id: int):
     """Busca caixa aberto do restaurante"""
     try:
@@ -789,8 +677,6 @@ def tela_dashboard():
     config = buscar_config_restaurante(rest_id)
     pedidos = listar_pedidos(rest_id)
     pedidos_hoje = [p for p in pedidos if p['data_criacao'][:10] == datetime.now().strftime('%Y-%m-%d')]
-    motoboys = listar_motoboys(rest_id)
-    solicitacoes = listar_solicitacoes_pendentes(rest_id)
     caixa = buscar_caixa_aberto(rest_id)
     
     # Métricas superiores
@@ -804,8 +690,8 @@ def tela_dashboard():
         st.metric("Pedidos Pendentes", len(pedidos_pendentes))
     
     with col3:
-        motoboys_ativos = [m for m in motoboys if m['status'] == 'ativo']
-        st.metric("Motoboys Ativos", len(motoboys_ativos))
+        motoboys = listar_motoboys_ativos(rest_id)
+        st.metric("Motoboys Ativos", len(motoboys))
     
     with col4:
         if caixa:
@@ -848,6 +734,7 @@ def tela_dashboard():
             st.rerun()
     
     with col4:
+        solicitacoes = listar_solicitacoes_pendentes(rest_id)
         if solicitacoes:
             if st.button(f"🔔 {len(solicitacoes)} Solicitações", use_container_width=True, type="primary"):
                 st.session_state.menu_principal = "🏍️ Motoboys"
@@ -1229,12 +1116,19 @@ def historico_pedidos():
         use_container_width=True
     )
 
-# ==================== MOTOBOYS ====================
+# ==================== MOTOBOYS - CORREÇÃO COMPLETA ====================
 
 def tela_motoboys():
     """Tela de gerenciamento de motoboys"""
     st.title("🏍️ Gerenciamento de Motoboys")
-    
+   
+    # Buscar restaurante_id da sessão
+    if 'restaurante_id' not in st.session_state or not st.session_state.restaurante_id:
+        st.error("❌ Erro: Restaurante não identificado. Faça login novamente.")
+        return
+   
+    restaurante_id = st.session_state.restaurante_id
+   
     tabs = st.tabs([
         "👥 Motoboys Ativos",
         "📥 Solicitações Pendentes",
@@ -1243,132 +1137,212 @@ def tela_motoboys():
         "💵 Pagar Motoboys",
         "🏆 Ranking"
     ])
-    
+   
     with tabs[0]:
-        listar_motoboys_ativos()
-    
+        listar_motoboys_ativos(restaurante_id)
+   
     with tabs[1]:
-        listar_solicitacoes()
-    
+        listar_solicitacoes(restaurante_id)
+   
     with tabs[2]:
-        configurar_logistica()
-    
+        configurar_logistica(restaurante_id)
+   
     with tabs[3]:
-        configurar_pagamentos()
-    
+        configurar_pagamentos(restaurante_id)
+   
     with tabs[4]:
-        pagar_motoboys()
-    
+        pagar_motoboys(restaurante_id)
+   
     with tabs[5]:
-        ranking_motoboys()
+        ranking_motoboys(restaurante_id)
 
-def listar_motoboys_ativos():
+def listar_motoboys_ativos(restaurante_id):
     """Lista motoboys aprovados e ativos"""
     st.subheader("👥 Motoboys Ativos")
-    
-    rest_id = st.session_state.restaurante_id
-    rest = st.session_state.restaurante_dados
-    
-    motoboys = listar_motoboys(rest_id)
-    motoboys_ativos = [m for m in motoboys if m['status'] == 'ativo']
-    
-    st.markdown(f"**{len(motoboys_ativos)} / {rest['limite_motoboys']} motoboys cadastrados**")
-    
-    if not motoboys_ativos:
-        st.info("Nenhum motoboy cadastrado ainda.")
+   
+    conn = get_db_connection()
+    cursor = conn.cursor()
+   
+    # Buscar limite do restaurante
+    cursor.execute("SELECT limite_motoboys FROM restaurantes WHERE id = ?", (restaurante_id,))
+    restaurante = cursor.fetchone()
+   
+    if not restaurante:
+        st.error("Restaurante não encontrado!")
+        conn.close()
         return
-    
-    for motoboy in motoboys_ativos:
+   
+    # Buscar motoboys ativos - CORRIGIDO: usa coluna 'status' (não 'aprovado')
+    cursor.execute("""
+        SELECT * FROM motoboys
+        WHERE restaurante_id = ? AND status = 'ativo'
+        ORDER BY nome
+    """, (restaurante_id,))
+   
+    motoboys = [dict(row) for row in cursor.fetchall()]
+   
+    st.markdown(f"**{len(motoboys)} / {restaurante['limite_motoboys']} motoboys cadastrados**")
+   
+    if not motoboys:
+        st.info("Nenhum motoboy cadastrado ainda.")
+        conn.close()
+        return
+   
+    for motoboy in motoboys:
         with st.expander(f"🏍️ {motoboy['nome']} - {motoboy['status'].upper()}"):
             col1, col2 = st.columns(2)
-            
+           
             with col1:
                 st.markdown(f"**Usuário:** {motoboy['usuario']}")
                 st.markdown(f"**Telefone:** {motoboy['telefone']}")
                 st.markdown(f"**Status:** {motoboy['status']}")
-            
+           
             with col2:
                 st.markdown(f"**Total Entregas:** {motoboy.get('total_entregas', 0)}")
                 st.markdown(f"**Total Ganhos:** R$ {motoboy.get('total_ganhos', 0):.2f}")
                 st.markdown(f"**Data Cadastro:** {motoboy['data_cadastro'][:10]}")
-            
+           
             if st.button(f"❌ Excluir Motoboy", key=f"excluir_{motoboy['id']}"):
-                sucesso, msg = excluir_motoboy(motoboy['id'])
-                if sucesso:
-                    st.success(msg)
-                    st.rerun()
+                # Verificar entregas pendentes
+                cursor.execute("""
+                    SELECT COUNT(*) as total FROM entregas
+                    WHERE motoboy_id = ? AND status != 'entregue'
+                """, (motoboy['id'],))
+                resultado = cursor.fetchone()
+                
+                if resultado['total'] > 0:
+                    st.error("Não é possível excluir motoboy com entregas pendentes!")
                 else:
-                    st.error(msg)
+                    cursor.execute("DELETE FROM motoboys WHERE id = ?", (motoboy['id'],))
+                    conn.commit()
+                    st.success(f"Motoboy {motoboy['nome']} excluído!")
+                    st.rerun()
+    
+    conn.close()
 
-def listar_solicitacoes():
+def listar_solicitacoes(restaurante_id):
     """Lista e gerencia solicitações de cadastro"""
     st.subheader("📥 Solicitações Pendentes")
-    
-    rest_id = st.session_state.restaurante_id
-    
-    solicitacoes = listar_solicitacoes_pendentes(rest_id)
-    
+   
+    conn = get_db_connection()
+    cursor = conn.cursor()
+   
+    cursor.execute("""
+        SELECT * FROM motoboys_solicitacoes
+        WHERE restaurante_id = ? AND status = 'pendente'
+        ORDER BY data_solicitacao DESC
+    """, (restaurante_id,))
+   
+    solicitacoes = [dict(row) for row in cursor.fetchall()]
+   
+    conn.close()
+   
     if not solicitacoes:
         st.info("Nenhuma solicitação pendente.")
         return
-    
+   
     st.markdown(f"**{len(solicitacoes)} solicitação(ões) aguardando aprovação**")
-    
+   
     for sol in solicitacoes:
         with st.container():
             col1, col2 = st.columns([3, 1])
-            
+           
             with col1:
                 st.markdown(f"### 👤 {sol['nome']}")
                 st.markdown(f"**Usuário:** {sol['usuario']}")
                 st.markdown(f"**Telefone:** {sol['telefone']}")
-                st.caption(f"Solicitado em: {sol['data_cadastro']}")
-            
+                st.caption(f"Solicitado em: {sol['data_solicitacao']}")
+           
             with col2:
                 col_btn1, col_btn2 = st.columns(2)
-                
+               
                 with col_btn1:
                     if st.button("✅", key=f"aprovar_{sol['id']}", help="Aprovar"):
-                        sucesso, msg = aprovar_motoboy(sol['id'])
-                        if sucesso:
-                            st.success(msg)
-                            # Criar notificação
-                            criar_notificacao(
-                                tipo='aprovacao',
-                                titulo='Cadastro Aprovado!',
-                                mensagem=f'Seu cadastro foi aprovado! Senha padrão: 123456',
-                                motoboy_id=sol['id']
-                            )
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        senha_padrao = hash_senha("123456")
+                        
+                        cursor.execute("""
+                            INSERT INTO motoboys (
+                                restaurante_id, nome, usuario, telefone, senha,
+                                status, total_entregas, total_ganhos,
+                                data_cadastro, data_solicitacao
+                            ) VALUES (?, ?, ?, ?, ?, 'ativo', 0, 0.0, ?, ?)
+                        """, (
+                            sol['restaurante_id'],
+                            sol['nome'],
+                            sol['usuario'],
+                            sol['telefone'],
+                            senha_padrao,
+                            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            sol['data_solicitacao']
+                        ))
+                        
+                        novo_motoboy_id = cursor.lastrowid
+                        
+                        cursor.execute("""
+                            UPDATE motoboys_solicitacoes 
+                            SET status = 'aprovado' 
+                            WHERE id = ?
+                        """, (sol['id'],))
+                        
+                        conn.commit()
+                        conn.close()
+                        
+                        # Notificação para o motoboy
+                        criar_notificacao(
+                            tipo='aprovacao',
+                            titulo='Cadastro Aprovado!',
+                            mensagem='Seu cadastro foi aprovado! Senha padrão: 123456',
+                            motoboy_id=novo_motoboy_id
+                        )
+                        
+                        st.success(f"✅ {sol['nome']} aprovado!")
+                        st.rerun()
+               
                 with col_btn2:
                     if st.button("❌", key=f"recusar_{sol['id']}", help="Recusar"):
-                        sucesso, msg = recusar_motoboy(sol['id'], "Recusado pelo restaurante")
-                        if sucesso:
-                            st.warning(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-            
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        cursor.execute("""
+                            UPDATE motoboys_solicitacoes 
+                            SET status = 'recusado' 
+                            WHERE id = ?
+                        """, (sol['id'],))
+                        
+                        conn.commit()
+                        conn.close()
+                        
+                        st.warning("Solicitação recusada.")
+                        st.rerun()
+           
             st.markdown("---")
 
-def configurar_logistica():
+def configurar_logistica(restaurante_id):
     """Configura modo de despacho de pedidos"""
     st.subheader("⚙️ Configurações de Logística de Entrega")
-    
-    rest_id = st.session_state.restaurante_id
-    config = buscar_config_restaurante(rest_id)
-    
+   
+    conn = get_db_connection()
+    cursor = conn.cursor()
+   
+    cursor.execute("SELECT modo_despacho FROM config_restaurante WHERE restaurante_id = ?", (restaurante_id,))
+    config = cursor.fetchone()
+    conn.close()
+   
+    if not config:
+        st.error("Configuração não encontrada!")
+        return
+   
     st.markdown("""
     ### 📦 Modos de Despacho
-    
+   
     Escolha como os pedidos serão distribuídos para os motoboys:
     """)
-    
+   
     modo_atual = config['modo_despacho']
-    
+   
     modo = st.radio(
         "Selecione o Modo",
         [
@@ -1378,242 +1352,266 @@ def configurar_logistica():
         ],
         index=0 if modo_atual == "auto_economico" else 1 if modo_atual == "manual" else 2,
         format_func=lambda x: {
-            "auto_economico": "🧠 Automático Inteligente (Econômico)",
+            "auto_economico": "🧠Inteligência Artificial (+ Econômico - Motoboys + Rápidez)",
             "manual": "✋ Manual (Selecionar motoboy)",
             "auto_ordem": "⏰ Automático por Ordem de Saída"
         }[x]
     )
-    
+   
     st.markdown("---")
-    
-    # Explicação de cada modo
+   
     if modo == "auto_economico":
         st.success("""
-        ### 🧠 Modo Automático Inteligente (Econômico)
-        
-        O sistema cria **rotas otimizadas** para economizar tempo e combustível:
+        ### 🧠 Modo Inteligência Artificial (+ Econômico - Motoboys + Rápidez)
+       
+        A inteligência artificial cria **rotas otimizadas** para economizar tempo e combustível:
         - Agrupa pedidos próximos para o mesmo motoboy
         - Calcula a melhor ordem de entrega
         - Ignora a ordem de saída dos pedidos
-        - Prioriza eficiência
+        - Prioriza eficiência e economia
+        - Reduz custos operacionais
+        - Melhora a satisfação do cliente com entregas mais rápidas
+        - Ideal para restaurantes com muitos pedidos de entrega
         """)
-    
+   
     elif modo == "manual":
         st.info("""
         ### ✋ Modo Manual
-        
+       
         Você escolhe **manualmente** qual motoboy vai entregar cada pedido:
         - Total controle sobre as atribuições
         - Pode escolher baseado em preferências
         - Requer mais atenção
         """)
-    
+   
     else:
         st.warning("""
         ### ⏰ Modo Automático por Ordem de Saída
-        
+       
         O sistema despacha **automaticamente** baseado no horário:
         - Prioriza pedidos que saíram primeiro
         - Distribui entre motoboys disponíveis
         - Mantém ordem cronológica
         """)
-    
+   
     if st.button("💾 Salvar Configuração", use_container_width=True, type="primary"):
-        if atualizar_config_restaurante(rest_id, {'modo_despacho': modo}):
-            st.success("✅ Configuração salva!")
-            st.rerun()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "UPDATE config_restaurante SET modo_despacho = ? WHERE restaurante_id = ?",
+            (modo, restaurante_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        st.success("✅ Configuração salva!")
+        st.rerun()
 
-def configurar_pagamentos():
+def configurar_pagamentos(restaurante_id):
     """Configura valores de pagamento dos motoboys"""
     st.subheader("💰 Configurações de Pagamento dos Motoboys")
-    
-    rest_id = st.session_state.restaurante_id
-    config = buscar_config_restaurante(rest_id)
-    
+   
+    conn = get_db_connection()
+    cursor = conn.cursor()
+   
+    cursor.execute("SELECT * FROM config_restaurante WHERE restaurante_id = ?", (restaurante_id,))
+    config = dict(cursor.fetchone())
+    conn.close()
+   
     st.markdown("""
     Configure os valores que serão usados para calcular o pagamento dos motoboys:
     """)
-    
+   
     with st.form("form_config_pagamentos"):
         col1, col2 = st.columns(2)
-        
+       
         with col1:
             taxa_diaria = st.number_input(
                 "Taxa Diária (R$)",
                 min_value=0.0,
-                value=config['taxa_diaria'],
+                value=float(config['taxa_diaria']),
                 step=5.0,
                 help="Valor fixo pago por dia de trabalho"
             )
-            
+           
             valor_lanche = st.number_input(
                 "Valor do Lanche (R$)",
                 min_value=0.0,
-                value=config['valor_lanche'],
+                value=float(config['valor_lanche']),
                 step=1.0,
                 help="Auxílio alimentação"
             )
-            
+           
             taxa_entrega_base = st.number_input(
                 "Taxa de Entrega Base (R$)",
                 min_value=0.0,
-                value=config['taxa_entrega_base'],
+                value=float(config['taxa_entrega_base']),
                 step=0.5,
                 help="Valor base por entrega (até a distância limite)"
             )
-        
+       
         with col2:
             distancia_base_km = st.number_input(
                 "Distância Base (km)",
                 min_value=0.0,
-                value=config['distancia_base_km'],
+                value=float(config['distancia_base_km']),
                 step=0.5,
                 help="Até quantos km vale a taxa base"
             )
-            
+           
             taxa_km_extra = st.number_input(
                 "Taxa por KM Extra (R$)",
                 min_value=0.0,
-                value=config['taxa_km_extra'],
+                value=float(config['taxa_km_extra']),
                 step=0.1,
                 help="Valor adicional por km acima da distância base"
             )
-            
+           
             valor_km = st.number_input(
                 "Valor por KM (R$)",
                 min_value=0.0,
-                value=config['valor_km'],
+                value=float(config['valor_km']),
                 step=0.1,
                 help="Valor usado para cálculos gerais de distância"
             )
-        
+       
         st.markdown("---")
-        
-        st.markdown("""
+       
+        st.markdown(f"""
         ### 💡 Exemplo de Cálculo
-        
+       
         Para uma entrega de **6 km**:
-        - Taxa Base: R$ {:.2f} (até {} km)
-        - Distância Extra: {} km
-        - Taxa Extra: {} km × R$ {:.2f} = R$ {:.2f}
-        - **Total da Entrega: R$ {:.2f}**
-        
+        - Taxa Base: R$ {taxa_entrega_base:.2f} (até {distancia_base_km} km)
+        - Distância Extra: {max(0, 6 - distancia_base_km)} km
+        - Taxa Extra: {max(0, 6 - distancia_base_km)} km × R$ {taxa_km_extra:.2f} = R$ {max(0, 6 - distancia_base_km) * taxa_km_extra:.2f}
+        - **Total da Entrega: R$ {taxa_entrega_base + (max(0, 6 - distancia_base_km) * taxa_km_extra):.2f}**
+       
         Ganho do dia:
-        - Taxa Diária: R$ {:.2f}
-        - Valor Lanche: R$ {:.2f}
+        - Taxa Diária: R$ {taxa_diaria:.2f}
+        - Valor Lanche: R$ {valor_lanche:.2f}
         - Total Entregas: R$ (soma de todas)
-        """.format(
-            taxa_entrega_base, distancia_base_km,
-            max(0, 6 - distancia_base_km),
-            max(0, 6 - distancia_base_km), taxa_km_extra,
-            max(0, 6 - distancia_base_km) * taxa_km_extra,
-            taxa_entrega_base + (max(0, 6 - distancia_base_km) * taxa_km_extra),
-            taxa_diaria, valor_lanche
-        ))
-        
+        """)
+       
         if st.form_submit_button("💾 Salvar Configurações", use_container_width=True, type="primary"):
-            dados = {
-                'taxa_diaria': taxa_diaria,
-                'valor_lanche': valor_lanche,
-                'taxa_entrega_base': taxa_entrega_base,
-                'distancia_base_km': distancia_base_km,
-                'taxa_km_extra': taxa_km_extra,
-                'valor_km': valor_km
-            }
+            conn = get_db_connection()
+            cursor = conn.cursor()
             
-            if atualizar_config_restaurante(rest_id, dados):
-                st.success("✅ Configurações salvas!")
-                st.rerun()
+            cursor.execute("""
+                UPDATE config_restaurante SET
+                    taxa_diaria = ?,
+                    valor_lanche = ?,
+                    taxa_entrega_base = ?,
+                    distancia_base_km = ?,
+                    taxa_km_extra = ?,
+                    valor_km = ?
+                WHERE restaurante_id = ?
+            """, (
+                taxa_diaria,
+                valor_lanche,
+                taxa_entrega_base,
+                distancia_base_km,
+                taxa_km_extra,
+                valor_km,
+                restaurante_id
+            ))
+           
+            conn.commit()
+            conn.close()
+            
+            st.success("✅ Configurações salvas!")
+            st.rerun()
 
-def pagar_motoboys():
+def pagar_motoboys(restaurante_id):
     """Interface para pagamento de motoboys"""
     st.subheader("💵 Pagar Motoboys")
-    
+   
     st.info("🚧 Funcionalidade em desenvolvimento...")
 
-def ranking_motoboys():
+def ranking_motoboys(restaurante_id):
     """Mostra ranking dos motoboys"""
     st.subheader("🏆 Ranking de Motoboys")
-    
-    rest_id = st.session_state.restaurante_id
-    
+   
+    conn = get_db_connection()
+    cursor = conn.cursor()
+   
     col1, col2, col3 = st.columns(3)
-    
+   
     with col1:
         ordem = st.selectbox(
             "Ordenar por",
             ["entregas", "ganhos", "velocidade"]
         )
-    
-    ranking = buscar_ranking_restaurante(restaurante_id, ordem)
-    
+   
+    ordem_sql = {
+        'entregas': 'total_entregas DESC',
+        'ganhos': 'total_ganhos DESC',
+        'velocidade': 'tempo_medio_entrega ASC, total_entregas DESC'
+    }.get(ordem, 'total_entregas DESC')
+   
+    cursor.execute(f"""
+        SELECT 
+            m.id, m.nome, m.usuario, m.telefone,
+            m.total_entregas, m.total_ganhos,
+            COALESCE(AVG(e.tempo_entrega), 0) as tempo_medio_entrega
+        FROM motoboys m
+        LEFT JOIN entregas e ON m.id = e.motoboy_id
+        WHERE m.restaurante_id = ? AND m.status = 'ativo'
+        GROUP BY m.id
+        ORDER BY {ordem_sql}
+    """, (restaurante_id,))
+   
+    ranking = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+   
     if not ranking:
         st.info("Nenhum dado de ranking disponível ainda.")
         return
-    
+   
     st.markdown("---")
-    
-    # Mostrar top 3 com destaque
+   
     if len(ranking) >= 1:
         st.markdown("### 🥇 1º Lugar")
         col1, col2, col3, col4 = st.columns(4)
-        
         with col1:
             st.markdown(f"**{ranking[0]['nome']}**")
-        
         with col2:
             st.metric("Entregas", ranking[0]['total_entregas'])
-        
         with col3:
             st.metric("Ganhos", f"R$ {ranking[0]['total_ganhos']:.2f}")
-        
         with col4:
-            tempo_medio = ranking[0].get('tempo_medio_entrega', 0)
-            st.metric("Tempo Médio", f"{tempo_medio:.0f} min")
-    
+            st.metric("Tempo Médio", f"{ranking[0]['tempo_medio_entrega']:.0f} min")
+   
     if len(ranking) >= 2:
         st.markdown("### 🥈 2º Lugar")
         col1, col2, col3, col4 = st.columns(4)
-        
         with col1:
             st.markdown(f"**{ranking[1]['nome']}**")
-        
         with col2:
             st.metric("Entregas", ranking[1]['total_entregas'])
-        
         with col3:
             st.metric("Ganhos", f"R$ {ranking[1]['total_ganhos']:.2f}")
-        
         with col4:
-            tempo_medio = ranking[1].get('tempo_medio_entrega', 0)
-            st.metric("Tempo Médio", f"{tempo_medio:.0f} min")
-    
+            st.metric("Tempo Médio", f"{ranking[1]['tempo_medio_entrega']:.0f} min")
+   
     if len(ranking) >= 3:
         st.markdown("### 🥉 3º Lugar")
         col1, col2, col3, col4 = st.columns(4)
-        
         with col1:
             st.markdown(f"**{ranking[2]['nome']}**")
-        
         with col2:
             st.metric("Entregas", ranking[2]['total_entregas'])
-        
         with col3:
             st.metric("Ganhos", f"R$ {ranking[2]['total_ganhos']:.2f}")
-        
         with col4:
-            tempo_medio = ranking[2].get('tempo_medio_entrega', 0)
-            st.metric("Tempo Médio", f"{tempo_medio:.0f} min")
-    
+            st.metric("Tempo Médio", f"{ranking[2]['tempo_medio_entrega']:.0f} min")
+   
     st.markdown("---")
-    
-    # Tabela completa
+   
     if len(ranking) > 3:
         st.markdown("### 📊 Ranking Completo")
-        
         df_ranking = pd.DataFrame(ranking)
         df_ranking['posicao'] = range(1, len(df_ranking) + 1)
-        
         st.dataframe(
             df_ranking[['posicao', 'nome', 'total_entregas', 'total_ganhos']],
             use_container_width=True
@@ -1877,8 +1875,6 @@ def configurar_endereco():
         )
         
         if st.form_submit_button("💾 Atualizar Endereço", use_container_width=True):
-            # TODO: Geocodificar endereço e salvar coordenadas
-            # TODO: Invalidar cache de distâncias
             st.info("🚧 Funcionalidade em desenvolvimento...")
 
 def configurar_integracoes():
@@ -1886,19 +1882,12 @@ def configurar_integracoes():
     st.subheader("🔗 Integrações")
     
     st.info("🚧 Integrações em desenvolvimento...")
-    
-    # TODO: Implementar integração com iFood
-    # TODO: Configurar webhook
-    # TODO: Testar conexão
 
 def configurar_seguranca():
     """Configurações de segurança e senha"""
     st.subheader("🔐 Segurança")
     
     st.info("🚧 Alteração de senha em desenvolvimento...")
-    
-    # TODO: Implementar mudança de senha
-    # TODO: Implementar 2FA
 
 # ==================== IMPRESSÃO ====================
 
@@ -1907,11 +1896,6 @@ def tela_impressao():
     st.title("🖨️ Impressão de Comandas")
     
     st.info("🚧 Sistema de impressão em desenvolvimento...")
-    
-    # TODO: Implementar impressão de comandas
-    # - Comanda para Cozinha
-    # - Comanda para Balcão
-    # - Comanda para Entrega
 
 # ==================== RELATÓRIOS ====================
 
@@ -1920,12 +1904,29 @@ def tela_relatorios():
     st.title("📊 Relatórios")
     
     st.info("🚧 Relatórios em desenvolvimento...")
-    
-    # TODO: Implementar relatórios
-    # - Vendas por período
-    # - Performance de motoboys
-    # - Produtos mais vendidos
-    # - Horários de pico
+
+# ==================== FUNÇÃO AUXILIAR PARA DASHBOARD ====================
+
+def listar_solicitacoes_pendentes(restaurante_id: int):
+    """Lista solicitações pendentes para o dashboard"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM motoboys_solicitacoes
+            WHERE restaurante_id = ? AND status = 'pendente'
+            ORDER BY data_solicitacao DESC
+        """, (restaurante_id,))
+        
+        solicitacoes = cursor.fetchall()
+        conn.close()
+        
+        return [dict(s) for s in solicitacoes]
+        
+    except Exception as e:
+        st.error(f"Erro ao listar solicitações: {str(e)}")
+        return []
 
 # ==================== MAIN ====================
 

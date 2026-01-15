@@ -1,6 +1,10 @@
 """
 database.py - Sistema de Banco de Dados Unificado Multi-Restaurante
 Gerencia TODAS as tabelas do sistema Super Food de forma integrada
+
+ALTERAÇÃO PRINCIPAL: Caminho do banco agora é ABSOLUTO na raiz do projeto.
+Isso garante que TODOS os apps (motoboy_app.py, restaurante_app.py, super_admin.py, etc.)
+usem exatamente o mesmo arquivo super_food.db, independentemente da pasta de execução.
 """
 
 import sqlite3
@@ -9,17 +13,24 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 import json
+import random
+import re
+
+# ==================== CAMINHO ÚNICO E ABSOLUTO DO BANCO ====================
+# Força o uso do mesmo arquivo super_food.db na raiz do projeto
+ROOT_DIR = os.path.abspath(os.path.dirname(__file__))          # pasta onde está este arquivo (raiz)
+DB_PATH = os.path.join(ROOT_DIR, "super_food.db")              # sempre super_food.db na raiz
 
 class DatabaseManager:
     """Gerenciador central do banco de dados - Todas as operações passam por aqui"""
     
-    def __init__(self, db_path: str = "super_food.db"):
+    def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self.conn = None
         self.init_database()
     
     def get_connection(self):
-        """Retorna conexão com o banco"""
+        """Retorna conexão com o banco (sempre o mesmo arquivo absoluto)"""
         if self.conn is None:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
@@ -401,7 +412,6 @@ class DatabaseManager:
                 return False, "Este email já está cadastrado!", None
             
             # Gerar código de acesso único (6 dígitos)
-            import random
             while True:
                 codigo = ''.join([str(random.randint(0, 9)) for _ in range(6)])
                 cursor.execute("SELECT id FROM restaurantes WHERE codigo_acesso = ?", (codigo,))
@@ -1168,7 +1178,6 @@ class DatabaseManager:
 
 def gerar_senha_aleatoria(tamanho: int = 6) -> str:
     """Gera senha aleatória numérica"""
-    import random
     return ''.join([str(random.randint(0, 9)) for _ in range(tamanho)])
 
 def formatar_telefone(telefone: str) -> str:
@@ -1177,8 +1186,7 @@ def formatar_telefone(telefone: str) -> str:
 
 def validar_email(email: str) -> bool:
     """Valida formato de email"""
-    import re
-    padrao = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    padrao = r'^[a-zA-Z0.9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(padrao, email) is not None
 
 
